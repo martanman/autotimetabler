@@ -1,10 +1,7 @@
 import json
-import re
 from ortools.sat.python import cp_model
 import sys
-
 import time
-
 
 class VarArraySolutionPrinter(cp_model.CpSolverSolutionCallback):
     """Print intermediate solutions."""
@@ -24,6 +21,10 @@ class VarArraySolutionPrinter(cp_model.CpSolverSolutionCallback):
     def solution_count(self):
         return self.__solution_count
 
+def timeify(num):
+    return f'{int(num // 1)}:{int(num % 1 * 6)}0'
+
+
 # reduces period data
 def redlist(lists):
     newl = []
@@ -31,74 +32,63 @@ def redlist(lists):
         if len(l) > 1:
             a = l[0]
             b = l[1]
-            newl.append([a[0], a[1], b[2]])
+            newl.append([a[0], int(a[1] * 2), int(b[2] * 2)])
         else:
-            newl.append(l[0])
+            for i in (1, 2):
+                l[0][i] = int(l[0][i] * 2)
+                newl.append(l[0])
     
     
     return (newl[0][2] - newl[0][1], list(map(lambda l: l[0] * 100 + l[1], newl)))
 
 def sols(data):
 
-
-
-
-
-    gap = int(data['gap']) if data['gap'] else 0 # minimum break between classes
+    gap = int(data['gap']) * 2 if data['gap'] else 0 # minimum break between classes
 
     newdata = list(map(lambda l: redlist(l), data['periods'])) # reduces data
 
     Time = time.time()
     model = cp_model.CpModel()
 
-
-    stuff = [model.NewIntVarFromDomain(cp_model.Domain.FromValues(newdata[i][1]), 'x%i' %i) for i in range(len(newdata))] # start times
-    stuff2 = [model.NewFixedSizeIntervalVar(stuff[i], newdata[i][0] + gap, 'xx%i' %i) for i in range(len(newdata))] # periods as intervals
+    classStartTimes = [model.NewIntVarFromDomain(cp_model.Domain.FromValues(newdata[i][1]), 'x%i' %i) for i in range(len(newdata))] # start times
+    classIntervals = [model.NewFixedSizeIntervalVar(classStartTimes[i], newdata[i][0] + gap, 'xx%i' %i) for i in range(len(newdata))] # periods as intervals
     
     daydom = cp_model.Domain.FromValues([int(i) for i in data['days']])
 
     late = []
     if data['start']:
-        earliest = int(data['start'])
+        earliest = int(data['start']) * 2
         late = [model.NewFixedSizeIntervalVar(i * 100, earliest, 'l%i' %i) for i in range(1, 6)]
     nolate = []
     if 'end' in data:
-        latest = int(data['end']) + gap
+        latest = int(data['end']) * 2 + gap
         nolate = [model.NewFixedSizeIntervalVar(i * 100 + latest, 3, 'l%i' %i) for i in range(1, 6)]
     
     if data["maxdays"] == '1':
         day = model.NewIntVarFromDomain(daydom, 'day') # mon to fri
-        for i in stuff:
+        for i in classStartTimes:
             model.AddDivisionEquality(day, i, 100) # makes them all on the same day
-
 
     if data["maxdays"] in ['2', '3', '4']:
 
         mxd = int(data["maxdays"])
-        Days = [model.NewIntVarFromDomain(daydom, 'day%i'%i) for i in range(len(stuff))] # mon to fri
+        Days = [model.NewIntVarFromDomain(daydom, 'day%i'%i) for i in range(len(classStartTimes))] # mon to fri
         dayvars = [model.NewIntVarFromDomain(daydom, 'dv%i'%i) for i in range(mxd)]
 
-        for i in range(len(stuff)):
-            model.AddDivisionEquality(Days[i],  stuff[i], 100) # assigns a day
+        for i in range(len(classStartTimes)):
+            model.AddDivisionEquality(Days[i],  classStartTimes[i], 100) # assigns a day
 
         bools = [[] for _ in range(mxd)]
-        for i in range(len(stuff)):
-            # bools.append(model.NewBoolVar('b%i' % i))
-            # bools2.append(model.NewBoolVar('b2%i' %i))
+        for i in range(len(classStartTimes)):
             basename = 'b%i' % i
             for j in range(mxd):
                 bools[j].append(model.NewBoolVar(basename + '%i'%j))
                 model.Add(Days[i] == dayvars[j]).OnlyEnforceIf(bools[j][i])
-            # model.Add(Days[i] == day2).OnlyEnforceIf(bools2[-1])
 
-        for i in range(len(stuff)):
+        for i in range(len(classStartTimes)):
             model.AddBoolXOr(bools[j][i] for j in range(mxd))
 
-
-    
-
-
-    model.AddNoOverlap(stuff2 + late + nolate) # makes the periods not overlap
+    model.AddNoOverlap(classIntervals + late + nolate) # makes the periods not overlap
 
     # solution and printing
 
@@ -109,14 +99,16 @@ def sols(data):
     print('elapsed: ' , time.time() - Time)
     print('Status = %s' % solver.StatusName(status))
     if solver.StatusName(status) != 'INFEASIBLE':
-        return [solver.Value(v) for v in stuff]
+        return [solver.Value(v) for v in classStartTimes]
     else:
         return None
 
-    v = stuff[0]
+    '''for when you want it to get all solutions ↓'''
+
+    v = classStartTimes[0]
     return v.Name(), solver.Value(v)
 
-    solution_printer = VarArraySolutionPrinter(stuff)
+    solution_printer = VarArraySolutionPrinter(classStartTimes)
     # Enumerate all solutions.
     solver.parameters.enumerate_all_solutions = True
 
@@ -139,6 +131,6 @@ if __name__ == '__main__':
             if res:
                 courses = sys.argv[-1][:-5].split('-')
                 i = 0
-                for day, time in map(lambda a: (days[a // 100], a % 100), res):
-                    print(f'{courses[i]} {day} {time}:00')
+                for day, tim in map(lambda a: (days[a // 100], timeify((a % 100)/2)), res):
+                    print(f'{courses[i]} {day} {tim}')
                     i+=1
