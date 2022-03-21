@@ -27,11 +27,6 @@ def timeify(num):
     return f'{int(num // 1)}:{int(num % 1 * 6)}0'
 
 
-l = [
-      [[5, 11, 12], [5, 12, 13]]
-    ]
-
-
 # reduces period data
 def redlist(lists):
     l = lists
