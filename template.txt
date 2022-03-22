@@ -1,0 +1,12 @@
+{
+    ...,
+    "periods": [ list of classes
+        [ class1::list of possible periods
+            [ periodgroup1
+                [ 1stPeriod
+                    int day, float starttime, float endtime
+                ], [2ndPeriod(optional)] (should be 1 or 2 periods)
+            ], [periodgroup2], [periodgroup3], ...
+        ], [class2], [class3], ...
+    ]
+}
